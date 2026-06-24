@@ -166,7 +166,7 @@ SD Card
     <li>Flash using esptool:</li>
 </ol>
 
-<pre><code>esptool.py write_flash --flash_size detect 0x0 retro-gamer_*.img</code></pre>
+<pre><code>esptool.py write_flash --flash_size detect 0x0 RetroGamer.bin</code></pre>
 
 <p>Or use the <a href="https://espressif.github.io/esptool-js/">esptool web version</a> for a GUI-based flashing experience.</p>
 
