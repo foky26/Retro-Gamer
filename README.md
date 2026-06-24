@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>README.md - Retro-Gamer</title>
+
 <style>
 body {
     background: #0d1117;
