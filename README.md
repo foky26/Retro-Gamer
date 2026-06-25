@@ -52,7 +52,7 @@
         <tr><th>System</th><th>Core</th><th>Extensions</th><th>Status</th></tr>
     </thead>
     <tbody>
-        <tr><td>NES / Famicom</td><td>nofrendo</td><td><code>.nes</code> <code>.fc</code></td><td>✅ Stable</td></tr>
+        <tr><td>NES</td><td>nofrendo</td><td><code>.nes</code> </td><td>✅ Stable</td></tr>
         <tr><td>Game Boy</td><td>gnuboy</td><td><code>.gb</code></td><td>✅ Stable</td></tr>
         <tr><td>Game Boy Color</td><td>gnuboy</td><td><code>.gbc</code></td><td>✅ Stable</td></tr>
         <tr><td>Sega Master System</td><td>smsplus</td><td><code>.sms</code></td><td>✅ Stable</td></tr>
@@ -62,13 +62,11 @@
         <tr><td>PC Engine / TurboGrafx</td><td>pce-go</td><td><code>.pce</code></td><td>✅ Stable</td></tr>
         <tr><td>SNES / Super Famicom</td><td>snes9x</td><td><code>.sfc</code> <code>.smc</code></td><td>⚠️ Slow</td></tr>
         <tr><td>Atari Lynx</td><td>handy</td><td><code>.lnx</code></td><td>✅ Stable</td></tr>
-        <tr><td>Mega Drive / Genesis</td><td>gwenesis</td><td><code>.md</code> <code>.gen</code> <code>.bin</code> <code>.smd</code></td><td>✅ Stable</td></tr>
+        <tr><td>Mega Drive / Genesis</td><td>gwenesis</td><td><code>.md</code> <code>.gen</code> <code>.bin</code> <code>.smd</code></td><td>⚠️ Slow</td></tr>
     </tbody>
 </table>
 
-<blockquote>
-    <p>All systems support <code>.zip</code> files — ROMs are automatically extracted.</p>
-</blockquote>
+
 
 <hr>
 
