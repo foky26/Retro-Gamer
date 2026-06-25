@@ -79,17 +79,12 @@
     <tbody>
         <tr><td><strong>11 Emulators</strong></td><td>NES, GB/GBC, SMS, GG, SG-1000, ColecoVision, PCE, SNES, Lynx, Genesis</td></tr>
         <tr><td><strong>In-Game Menu</strong></td><td>Save/Load states (4 slots), turbo, palette, rotate, sound toggle, reset, quit</td></tr>
-        <tr><td><strong>17 GB Palettes</strong></td><td>DMG Green, Pocket, MGB Light, CGB, SGB, and custom schemes</td></tr>
-        <tr><td><strong>5 NES Palettes</strong></td><td>Default, Vibrant, Pastel, Dark, Mono</td></tr>
         <tr><td><strong>Favorites &amp; Recent</strong></td><td>Quick access to your favorite and recently played games</td></tr>
         <tr><td><strong>Save States</strong></td><td>4 slots per game</td></tr>
-        <tr><td><strong>ZIP Support</strong></td><td>Load ROMs directly from ZIP files</td></tr>
-        <tr><td><strong>WiFi File Manager</strong></td><td>Browser-based file upload/download</td></tr>
+         <tr><td><strong>WiFi File Manager</strong></td><td>Browser-based file upload/download</td></tr>
         <tr><td><strong>VGA Output</strong></td><td>320x240 resolution with 64 colors (RGB222)</td></tr>
         <tr><td><strong>PS/2 Keyboard</strong></td><td>Full keyboard input with WASD support</td></tr>
-        <tr><td><strong>SRAM Save</strong></td><td>Battery save support for compatible games</td></tr>
         <tr><td><strong>ROM Cache</strong></td><td>Fast boot times with cached ROM list</td></tr>
-        <tr><td><strong>Lynx Rotation</strong></td><td>Rotate screen for better display</td></tr>
         <tr><td><strong>Sound Control</strong></td><td>Toggle audio ON/OFF</td></tr>
         <tr><td><strong>Turbo / Fast Forward</strong></td><td>2× speed with continuous audio</td></tr>
     </tbody>
@@ -208,7 +203,7 @@ SD Card
         <tr><th>System</th><th>Folder</th><th>Extensions</th></tr>
     </thead>
     <tbody>
-        <tr><td>NES</td><td><code>/roms/nes/</code></td><td>.nes, .fc</td></tr>
+        <tr><td>NES</td><td><code>/roms/nes/</code></td><td>.nes</td></tr>
         <tr><td>Game Boy</td><td><code>/roms/gb/</code></td><td>.gb</td></tr>
         <tr><td>Game Boy Color</td><td><code>/roms/gbc/</code></td><td>.gbc</td></tr>
         <tr><td>Master System</td><td><code>/roms/sms/</code></td><td>.sms</td></tr>
