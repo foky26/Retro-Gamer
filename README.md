@@ -3,8 +3,6 @@
 <head>
 <meta charset="UTF-8">
 
-
-
 <h1>RETRO-GAMER</h1>
 
 <p><strong>Multi-System Retro Emulator for ESP32-FabGL</strong></p>
@@ -23,11 +21,14 @@
     <li><a href="#supported-systems">Supported Systems</a></li>
     <li><a href="#features">Features</a></li>
     <li><a href="#hardware-requirements">Hardware Requirements</a></li>
+    <li><a href="#pin-configuration">Pin Configuration</a></li>
     <li><a href="#installation">Installation</a></li>
     <li><a href="#sd-card-structure">SD Card Structure</a></li>
     <li><a href="#usage">Usage</a></li>
     <li><a href="#building-from-source">Building from Source</a></li>
     <li><a href="#development">Development</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+    <li><a href="#known-limitations">Known Limitations</a></li>
     <li><a href="#acknowledgements">Acknowledgements</a></li>
     <li><a href="#license">License</a></li>
 </ul>
@@ -46,34 +47,55 @@
 
 <h2 id="supported-systems">Supported Systems</h2>
 
-<ul>
-    <li><strong>Nintendo</strong>: NES (Nintendo Entertainment System), SNES (Super Nintendo - slower), Game Boy, Game Boy Color</li>
-    <li><strong>Sega</strong>: SG-1000, Master System, Mega Drive / Genesis, Game Gear</li>
-    <li><strong>Coleco</strong>: ColecoVision</li>
-    <li><strong>NEC</strong>: PC Engine / TurboGrafx-16</li>
-    <li><strong>Atari</strong>: Lynx</li>
-</ul>
+<table>
+    <thead>
+        <tr><th>System</th><th>Core</th><th>Extensions</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>NES / Famicom</td><td>nofrendo</td><td><code>.nes</code> <code>.fc</code></td><td>✅ Stable</td></tr>
+        <tr><td>Game Boy</td><td>gnuboy</td><td><code>.gb</code></td><td>✅ Stable</td></tr>
+        <tr><td>Game Boy Color</td><td>gnuboy</td><td><code>.gbc</code></td><td>✅ Stable</td></tr>
+        <tr><td>Sega Master System</td><td>smsplus</td><td><code>.sms</code></td><td>✅ Stable</td></tr>
+        <tr><td>Sega Game Gear</td><td>smsplus</td><td><code>.gg</code></td><td>✅ Stable</td></tr>
+        <tr><td>SG-1000</td><td>smsplus</td><td><code>.sg</code></td><td>✅ Stable</td></tr>
+        <tr><td>ColecoVision</td><td>smsplus</td><td><code>.col</code></td><td>✅ Stable</td></tr>
+        <tr><td>PC Engine / TurboGrafx</td><td>pce-go</td><td><code>.pce</code></td><td>✅ Stable</td></tr>
+        <tr><td>SNES / Super Famicom</td><td>snes9x</td><td><code>.sfc</code> <code>.smc</code></td><td>⚠️ Slow</td></tr>
+        <tr><td>Atari Lynx</td><td>handy</td><td><code>.lnx</code></td><td>✅ Stable</td></tr>
+        <tr><td>Mega Drive / Genesis</td><td>gwenesis</td><td><code>.md</code> <code>.gen</code> <code>.bin</code> <code>.smd</code></td><td>✅ Stable</td></tr>
+    </tbody>
+</table>
+
+<blockquote>
+    <p>All systems support <code>.zip</code> files — ROMs are automatically extracted.</p>
+</blockquote>
 
 <hr>
 
 <h2 id="features">Features</h2>
 
-<ul>
-    <li>🎮 <strong>Multiple emulators</strong> in a single unified launcher</li>
-    <li>💾 <strong>Save states</strong> with multiple slots per game</li>
-    <li>⚡ <strong>Turbo mode</strong> for fast-forwarding through games</li>
-    <li>🎨 <strong>Custom color palettes</strong> for NES and Game Boy</li>
-    <li>🔄 <strong>Lynx rotation support</strong> for better display</li>
-    <li>📁 <strong>Favorites and recent games</strong> lists</li>
-    <li>📂 <strong>WiFi file manager</strong> for easy ROM management</li>
-    <li>🎵 <strong>Sound control</strong> (toggle ON/OFF)</li>
-    <li>🖥️ <strong>VGA output</strong> at 320x240 resolution with 64 colors</li>
-    <li>⌨️ <strong>PS/2 Keyboard input</strong> with configurable controls</li>
-    <li>💾 <strong>SRAM (battery save)</strong> support for compatible games</li>
-    <li>📦 <strong>ZIP file support</strong> for compressed ROMs</li>
-    <li>🔍 <strong>ROM cache</strong> for fast boot times</li>
-    <li>🎨 <strong>Themable launcher</strong> interface</li>
-</ul>
+<table>
+    <thead>
+        <tr><th>Feature</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+        <tr><td><strong>11 Emulators</strong></td><td>NES, GB/GBC, SMS, GG, SG-1000, ColecoVision, PCE, SNES, Lynx, Genesis</td></tr>
+        <tr><td><strong>In-Game Menu</strong></td><td>Save/Load states (4 slots), turbo, palette, rotate, sound toggle, reset, quit</td></tr>
+        <tr><td><strong>17 GB Palettes</strong></td><td>DMG Green, Pocket, MGB Light, CGB, SGB, and custom schemes</td></tr>
+        <tr><td><strong>5 NES Palettes</strong></td><td>Default, Vibrant, Pastel, Dark, Mono</td></tr>
+        <tr><td><strong>Favorites &amp; Recent</strong></td><td>Quick access to your favorite and recently played games</td></tr>
+        <tr><td><strong>Save States</strong></td><td>4 slots per game</td></tr>
+        <tr><td><strong>ZIP Support</strong></td><td>Load ROMs directly from ZIP files</td></tr>
+        <tr><td><strong>WiFi File Manager</strong></td><td>Browser-based file upload/download</td></tr>
+        <tr><td><strong>VGA Output</strong></td><td>320x240 resolution with 64 colors (RGB222)</td></tr>
+        <tr><td><strong>PS/2 Keyboard</strong></td><td>Full keyboard input with WASD support</td></tr>
+        <tr><td><strong>SRAM Save</strong></td><td>Battery save support for compatible games</td></tr>
+        <tr><td><strong>ROM Cache</strong></td><td>Fast boot times with cached ROM list</td></tr>
+        <tr><td><strong>Lynx Rotation</strong></td><td>Rotate screen for better display</td></tr>
+        <tr><td><strong>Sound Control</strong></td><td>Toggle audio ON/OFF</td></tr>
+        <tr><td><strong>Turbo / Fast Forward</strong></td><td>2× speed with continuous audio</td></tr>
+    </tbody>
+</table>
 
 <hr>
 
@@ -93,9 +115,12 @@
     <li><strong>Olimex ESP32-SBC-FabGL Rev B</strong></li>
 </ul>
 
-<h3>Pin Connections:</h3>
+<hr>
 
-<h4>LilyGO TTGO VGA32:</h4>
+<h2 id="pin-configuration">Pin Configuration</h2>
+
+<h3>LilyGO TTGO VGA32:</h3>
+
 <table>
     <thead>
         <tr><th>Function</th><th>GPIO Pin</th></tr>
@@ -116,7 +141,7 @@
     </tbody>
 </table>
 
-<h4>Olimex ESP32-SBC-FabGL Rev B:</h4>
+<h3>Olimex ESP32-SBC-FabGL Rev B:</h3>
 <p>Same as above, except <strong>SD CS = GPIO 4</strong></p>
 
 <hr>
@@ -273,6 +298,8 @@ SD Card
   "password0": "your-wifi-password"
 }</code></pre>
 
+<p>Up to 4 networks can be configured (ssid0-ssid3).</p>
+
 <ol start="2">
     <li>Connect your ESP32 to the network (WiFi connection happens automatically on boot).</li>
     <li>Find the IP address in the boot screen (top-right corner).</li>
@@ -283,8 +310,8 @@ SD Card
 
 <p>Press <strong>Tab</strong> in-game to toggle turbo mode. When enabled:</p>
 <ul>
-    <li>The game runs at approximately 2x speed</li>
-    <li>Audio is disabled during skipped frames</li>
+    <li>The game runs at approximately 2× speed</li>
+    <li>Audio is continuous (no interruptions)</li>
     <li>Useful for skipping long cutscenes or grinding in RPGs</li>
 </ul>
 
@@ -351,6 +378,20 @@ cd Retro-Gamer</code></pre>
 
 <pre><code>idf.py flash</code></pre>
 
+<h3>Build Metrics</h3>
+
+<table>
+    <thead>
+        <tr><th>Metric</th><th>Value</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>Flash Usage</td><td>~1.9 MB / 3.14 MB (61%)</td></tr>
+        <tr><td>DRAM Usage</td><td>~120 KB / 327 KB (36%)</td></tr>
+        <tr><td>Free DRAM</td><td>~207 KB</td></tr>
+        <tr><td>PSRAM</td><td>~4 MB (for ROM data, framebuffers, audio)</td></tr>
+    </tbody>
+</table>
+
 <hr>
 
 <h2 id="development">Development</h2>
@@ -371,6 +412,23 @@ cd Retro-Gamer</code></pre>
     <li><code>DBG_VERBOSE(tag, format, ...)</code> - Detailed debug (gray)</li>
 </ul>
 
+<h3>Architecture</h3>
+
+<pre>
+Retro_Gamer.ino          ← Main: hardware init, launcher UI, game loop
+├── src/
+│   ├── debug.h           ← Debug system (Serial)
+│   ├── nes_bridge.c/h    ← NES emulator bridge
+│   ├── gb_bridge.c/h     ← Game Boy bridge
+│   ├── sms_bridge.c/h    ← SMS/GG/SG-1000/ColecoVision bridge
+│   ├── pce_bridge.c/h    ← PC Engine bridge
+│   ├── snes_bridge.c/h   ← SNES bridge
+│   ├── lynx_bridge.c/h   ← Atari Lynx bridge
+│   ├── genesis_bridge.c/h ← Mega Drive bridge
+│   ├── wifi_manager.*    ← WiFi + HTTP server
+│   └── sound_control.c/h ← Audio control
+</pre>
+
 <h3>Adding a New Emulator</h3>
 
 <ol>
@@ -389,6 +447,40 @@ cd Retro-Gamer</code></pre>
     <li>Add the system to <code>emu_type_t</code> in <code>Retro_Gamer.ino</code></li>
     <li>Update <code>getEmuType()</code>, <code>emuName()</code>, and <code>emuShortName()</code></li>
 </ol>
+
+<hr>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<table>
+    <thead>
+        <tr><th>Problem</th><th>Solution</th></tr>
+    </thead>
+    <tbody>
+        <tr><td><strong>Black/no VGA output</strong></td><td>Check VGA cable connection. Ensure monitor supports 640×480@60Hz.</td></tr>
+        <tr><td><strong>"PSRAM not found"</strong></td><td>Your board must have ESP32-WROVER module (with PSRAM). Regular ESP32 not supported.</td></tr>
+        <tr><td><strong>SD card not detected</strong></td><td>Format as FAT32 (not exFAT). Check card is ≤32GB.</td></tr>
+        <tr><td><strong>Keyboard not working</strong></td><td>Must be PS/2 protocol (not USB-to-PS/2 adapter). Check CLK=33, DAT=32.</td></tr>
+        <tr><td><strong>No audio</strong></td><td>Audio output is on GPIO 25 (internal DAC). Connect amplified speaker.</td></tr>
+        <tr><td><strong>ROM list empty</strong></td><td>ROMs must be in <code>/roms/{platform}/</code> directories. Check file extensions.</td></tr>
+        <tr><td><strong>SNES very slow</strong></td><td>Expected — ESP32 at 240MHz struggles with SNES emulation.</td></tr>
+        <tr><td><strong>WiFi won't work</strong></td><td>Check <code>wifi.json</code> format. Ensure SD card is properly inserted.</td></tr>
+        <tr><td><strong>Compile error: DRAM overflow</strong></td><td>Set <code>DEBUG_ENABLED 0</code> to reduce memory usage.</td></tr>
+    </tbody>
+</table>
+
+<hr>
+
+<h2 id="known-limitations">Known Limitations</h2>
+
+<ul>
+    <li><strong>Save States</strong>: Work for most systems but may have occasional issues with some games</li>
+    <li><strong>SNES Performance</strong>: ~15-25 FPS due to ESP32 CPU limitations</li>
+    <li><strong>VGA Color Depth</strong>: 64 colors (R2G2B2) — adequate for retro systems</li>
+    <li><strong>Audio</strong>: 8-bit DAC output at 22050Hz — acceptable for retro audio</li>
+    <li><strong>No Bluetooth</strong>: Bluetooth gamepad support is not implemented</li>
+    <li><strong>Single Player Only</strong>: No multiplayer/netplay support</li>
+</ul>
 
 <hr>
 
@@ -443,5 +535,5 @@ cd Retro-Gamer</code></pre>
 
 <p><strong>Retro-Gamer</strong> - Bringing retro gaming to VGA displays, one pixel at a time! 🎮</p>
 
-</body>
+
 </html>
