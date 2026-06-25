@@ -8,7 +8,7 @@
 <p><strong>Multi-System Retro Emulator for ESP32-FabGL</strong></p>
 
 <p>
-    <span class="badge">License: GPL v2</span>
+    <span class="badge">License: GPL v3</span>
     <span class="badge badge-blue">Platform: ESP32</span>
     <span class="badge badge-orange">Display: VGA</span>
 </p>
