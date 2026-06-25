@@ -224,10 +224,6 @@ SD Card
 
 <p>Example: <code>/retro-go/saves/nes/Super_Mario_Bros.sav0</code></p>
 
-<h3>SRAM (Battery Saves)</h3>
-
-<p>SRAM saves are stored automatically by the emulators in their respective save directories.</p>
-
 <hr>
 
 <h2 id="usage">Usage</h2>
@@ -509,7 +505,7 @@ Retro_Gamer.ino          ← Main: hardware init, launcher UI, game loop
 
 <h2 id="license">License</h2>
 
-<p>This project is licensed under the <strong>GNU General Public License v2.0</strong> - see the <a href="COPYING">COPYING</a> file for details.</p>
+<p>This project is licensed under the <strong>GNU General Public License v3.0</strong> - see the <a href="COPYING">COPYING</a> file for details.</p>
 
 <h3>Exception:</h3>
 <ul>
