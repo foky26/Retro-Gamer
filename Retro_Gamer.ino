@@ -2088,134 +2088,133 @@ void loop() {
     }
     
     case STATE_EMULATING: {
-        uint32_t rawBtns = readButtons();
-        uint32_t btns;
-        
-        if (currentEmu == EMU_LYNX && lynxRotated) {
-            btns = readButtonsRotated();
-        } else {
-            btns = rawBtns;
-        }
-        
-        bool shouldRender = !turboMode || (frameCounter % turboFrameSkip == 0);
-        
-        switch (currentEmu) {
-           case EMU_NES: {
-                nes_bridge_set_input(toNES(btns));
-                 uint8_t *fb = nes_bridge_run_frame(shouldRender);
-                if (shouldRender) {
-                    blitNES(fb);
-                   int nSamples = 0;
-                   int16_t *aBuf = nes_bridge_get_audio(&nSamples);
-                  if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
-                 }
-                 break;
-            }
-            case EMU_GB: {
-                gb_bridge_set_input(toGB(btns));
-                gb_bridge_run_frame(shouldRender);
-                if (shouldRender) {
-                    blitGB(gb_bridge_get_framebuffer());
-                    int nSamples = 0;
-                    int16_t *aBuf = gb_bridge_get_audio(&nSamples);
-                    if (aBuf && nSamples > 0) {
-                        for (int i = 0; i < nSamples && ((audioWritePos+1)&AUDIO_RING_MASK)!=audioReadPos; i++) {
-                            audioRing[audioWritePos] = aBuf[i * 2];
-                            audioWritePos = (audioWritePos + 1) & AUDIO_RING_MASK;
-                        }
-                    }
-                }
-                break;
-            }
-            case EMU_SMS: case EMU_GG: case EMU_SG1000: case EMU_COLECO: {
-                sms_bridge_set_input(toSMS(btns));
-                sms_bridge_run_frame(shouldRender);
-                if (shouldRender) {
-                    int w, h;
-                    uint8_t *fb = sms_bridge_get_framebuffer(&w, &h);
-                    uint16_t *pal = sms_bridge_get_palette();
-                    blitSMS(fb, pal, w, h);
-                    int16_t *aL, *aR; int nSamples;
-                    sms_bridge_get_audio(&aL, &aR, &nSamples);
-                    if (aL && aR && nSamples > 0) audioFeedStereoMixed(aL, aR, nSamples);
-                }
-                break;
-            }
-            case EMU_PCE: {
-                pce_bridge_set_input(toPCE(btns));
-                if (shouldRender) {
-                    pce_bridge_run_frame();
-                    int w, h;
-                    uint8_t *fb = pce_bridge_get_framebuffer(&w, &h);
-                    uint16_t *pal = pce_bridge_get_palette();
-                    blitPCE(fb, pal, w, h);
-                    int nSamples = 0;
-                    int16_t *aBuf = pce_bridge_get_audio(&nSamples);
-                    if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
-                }
-                break;
-            }
-            case EMU_SNES: {
-                snes_bridge_set_input(toSNES(btns));
-                snes_bridge_run_frame(shouldRender);
-                if (shouldRender) {
-                    int w, h;
-                    uint16_t *fb = snes_bridge_get_framebuffer(&w, &h);
-                    blitSNES(fb, w, h);
-                    int nSamples = 0;
-                    int16_t *aBuf = snes_bridge_get_audio(&nSamples);
-                    if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
-                }
-                break;
-            }
-            case EMU_LYNX: {
-                // Use btns already calculated
-                uint32_t lynxBtns;
-                if (lynxRotated) {
-                    lynxBtns = toLynx(readButtonsRotated());
-                } else {
-                    lynxBtns = toLynx(readButtons());
-                }
-                lynx_bridge_set_input(lynxBtns);
-                lynx_bridge_run_frame(shouldRender);
-                if (shouldRender) {
-                    blitLynx(lynx_bridge_get_framebuffer());
-                    int nSamples = 0;
-                    int16_t *aBuf = lynx_bridge_get_audio(&nSamples);
-                    if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
-                }
-                break;
-            }
-            case EMU_GENESIS: {
-                genesis_bridge_set_input(toGenesis(btns));
-                if (shouldRender) {
-                    int w, h;
-                    uint8_t *fb = genesis_bridge_get_framebuffer(&w, &h);
-                    blitGenesis(fb, w, h);
-                    int nSamples = 0;
-                    int16_t *aBuf = genesis_bridge_get_audio(&nSamples);
-                    if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
-                }
-                genesis_bridge_run_frame(shouldRender);
-                break;
-            }
-            default: break;
-        }
-        
-        frameCounter++;
-        
-        if (Kbd && Kbd->isVKDown(fabgl::VK_TAB)) {
-            turboMode = !turboMode;
-            delay(250);
-        }
-        if (Kbd && Kbd->isVKDown(fabgl::VK_ESCAPE)) {
-            delay(200);
-            igMenuSel = 0;
-            appState = STATE_INGAME_MENU;
-            drawInGameMenu();
-        }
-        break;
+    uint32_t rawBtns = readButtons();
+    uint32_t btns;
+    
+    if (currentEmu == EMU_LYNX && lynxRotated) {
+        btns = readButtonsRotated();
+    } else {
+        btns = rawBtns;
     }
+    
+    bool shouldRender = !turboMode || (frameCounter % turboFrameSkip == 0);
+    
+    switch (currentEmu) {
+        case EMU_NES: {
+            nes_bridge_set_input(toNES(btns));
+            uint8_t *fb = nes_bridge_run_frame(shouldRender);
+            if (shouldRender) {
+                blitNES(fb);
+            }
+            int nSamples = 0;
+            int16_t *aBuf = nes_bridge_get_audio(&nSamples);
+            if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
+            break;
+        }
+        case EMU_GB: {
+            gb_bridge_set_input(toGB(btns));
+            gb_bridge_run_frame(shouldRender);
+            if (shouldRender) {
+                blitGB(gb_bridge_get_framebuffer());
+            }
+            int nSamples = 0;
+            int16_t *aBuf = gb_bridge_get_audio(&nSamples);
+            if (aBuf && nSamples > 0) {
+                for (int i = 0; i < nSamples && ((audioWritePos+1)&AUDIO_RING_MASK)!=audioReadPos; i++) {
+                    audioRing[audioWritePos] = aBuf[i * 2];
+                    audioWritePos = (audioWritePos + 1) & AUDIO_RING_MASK;
+                }
+            }
+            break;
+        }
+        case EMU_SMS: case EMU_GG: case EMU_SG1000: case EMU_COLECO: {
+            sms_bridge_set_input(toSMS(btns));
+            sms_bridge_run_frame(shouldRender);
+            if (shouldRender) {
+                int w, h;
+                uint8_t *fb = sms_bridge_get_framebuffer(&w, &h);
+                uint16_t *pal = sms_bridge_get_palette();
+                blitSMS(fb, pal, w, h);
+            }
+            int16_t *aL, *aR; int nSamples;
+            sms_bridge_get_audio(&aL, &aR, &nSamples);
+            if (aL && aR && nSamples > 0) audioFeedStereoMixed(aL, aR, nSamples);
+            break;
+        }
+        case EMU_PCE: {
+            pce_bridge_set_input(toPCE(btns));
+            pce_bridge_run_frame();
+            if (shouldRender) {
+                int w, h;
+                uint8_t *fb = pce_bridge_get_framebuffer(&w, &h);
+                uint16_t *pal = pce_bridge_get_palette();
+                blitPCE(fb, pal, w, h);
+            }
+            int nSamples = 0;
+            int16_t *aBuf = pce_bridge_get_audio(&nSamples);
+            if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
+            break;
+        }
+        case EMU_SNES: {
+            snes_bridge_set_input(toSNES(btns));
+            snes_bridge_run_frame(shouldRender);
+            if (shouldRender) {
+                int w, h;
+                uint16_t *fb = snes_bridge_get_framebuffer(&w, &h);
+                blitSNES(fb, w, h);
+            }
+            int nSamples = 0;
+            int16_t *aBuf = snes_bridge_get_audio(&nSamples);
+            if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
+            break;
+        }
+        case EMU_LYNX: {
+            uint32_t lynxBtns;
+            if (lynxRotated) {
+                lynxBtns = toLynx(readButtonsRotated());
+            } else {
+                lynxBtns = toLynx(readButtons());
+            }
+            lynx_bridge_set_input(lynxBtns);
+            lynx_bridge_run_frame(shouldRender);
+            if (shouldRender) {
+                blitLynx(lynx_bridge_get_framebuffer());
+            }
+            int nSamples = 0;
+            int16_t *aBuf = lynx_bridge_get_audio(&nSamples);
+            if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
+            break;
+        }
+        case EMU_GENESIS: {
+            genesis_bridge_set_input(toGenesis(btns));
+            if (shouldRender) {
+                int w, h;
+                uint8_t *fb = genesis_bridge_get_framebuffer(&w, &h);
+                blitGenesis(fb, w, h);
+            }
+            int nSamples = 0;
+            int16_t *aBuf = genesis_bridge_get_audio(&nSamples);
+            if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
+            genesis_bridge_run_frame(shouldRender);
+            break;
+        }
+        default: break;
+    }
+    
+    frameCounter++;
+    
+    if (Kbd && Kbd->isVKDown(fabgl::VK_TAB)) {
+        turboMode = !turboMode;
+        delay(250);
+    }
+    if (Kbd && Kbd->isVKDown(fabgl::VK_ESCAPE)) {
+        delay(200);
+        igMenuSel = 0;
+        appState = STATE_INGAME_MENU;
+        drawInGameMenu();
+    }
+    break;
+}
     
     case STATE_INGAME_MENU: {
         static unsigned long lastMenuInput = 0;
