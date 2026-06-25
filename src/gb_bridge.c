@@ -116,13 +116,10 @@ uint16_t* gb_bridge_get_framebuffer(void)
 
 int16_t* gb_bridge_get_audio(int *num_samples)
 {
-    // If sound is disabled, return silence
+    // If sound is disabled, return NULL (skip audio pipeline)
     if (!g_sound_enabled) {
-        if (gb_audiobuffer) {
-            memset(gb_audiobuffer, 0, GB_AUDIO_BUFFER_LEN * sizeof(int16_t) * 2);
-        }
-        *num_samples = gb_audio_samples;
-        return gb_audiobuffer;
+        *num_samples = 0;
+        return NULL;
     }
     
     // Sound enabled - normal behavior

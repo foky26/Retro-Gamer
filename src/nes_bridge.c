@@ -19,22 +19,15 @@ static nes_t *nes = NULL;
 static uint8_t *nes_framebuffer = NULL;
 static uint32_t current_buttons = 0;
 static bool nes_initialized = false;
-static int frame_count = 0;
 
 // Declare external functions from nofrendo
 extern int state_save(const char *filename);
 extern int state_load(const char *filename);
 
-/**
- * Blit callback - called by nofrendo when a frame is ready
- */
-static void blit_callback(uint8 *bmp)
-{
-    if (nes_framebuffer && bmp) {
-        memcpy(nes_framebuffer, bmp, 272 * 240);
-        frame_count++;
-    }
-}
+// No blit_callback needed: nofrendo renders directly into nes_framebuffer
+// because nes->vidbuf is set to nes_framebuffer in nes_bridge_init().
+// The previous callback did memcpy(nes_framebuffer, bmp, 272*240) where
+// bmp == nes->vidbuf == nes_framebuffer — a 65 KB self-copy every frame.
 
 bool nes_bridge_init(int sample_rate)
 {
@@ -59,10 +52,9 @@ bool nes_bridge_init(int sample_rate)
         return false;
     }
 
-    // Force vidbuf directly in the nes structure
+    // Set vidbuf so nofrendo renders directly into our framebuffer.
+    // No blit_func needed — the callback would be a no-op (bmp == nes_framebuffer).
     nes->vidbuf = nes_framebuffer;
-    
-    // Also call the official function
     nes_setvidbuf(nes_framebuffer);
     
     // Verify it was assigned correctly
@@ -70,9 +62,6 @@ bool nes_bridge_init(int sample_rate)
         DBG_WARN("NES", "vidbuf mismatch! Expected %p, got %p", 
                nes_framebuffer, nes->vidbuf);
     }
-    
-    // Set blit callback
-    nes->blit_func = blit_callback;
 
     nes_initialized = true;
     DBG_INFO("NES", "Initialized successfully");
@@ -101,10 +90,10 @@ int nes_bridge_load_rom(const char *path)
                nes->refresh_rate,
                nes->scanlines_per_frame);
         
-        // Now that cartridge is inserted, run warm-up frames
+        // Warm-up frames: pass false so nofrendo skips rendering
         nes_reset(true);
         for (int i = 0; i < 5; i++) {
-            nes_emulate(true);
+            nes_emulate(false);
         }
         current_buttons = 0;
         input_update(0, 0);
@@ -145,13 +134,11 @@ int16_t* nes_bridge_get_audio(int *num_samples)
         return NULL;
     }
     
-    // If sound is disabled, return silence
+    // If sound is disabled, skip the audio pipeline entirely.
+    // Returning NULL causes the caller to skip audioFeedSamples().
     if (!g_sound_enabled) {
-        *num_samples = nes->apu->samples_per_frame;
-        if (nes->apu->buffer) {
-            memset(nes->apu->buffer, 0, nes->apu->samples_per_frame * sizeof(int16_t));
-        }
-        return nes->apu->buffer;
+        *num_samples = 0;
+        return NULL;
     }
     
     // Sound enabled - normal behavior

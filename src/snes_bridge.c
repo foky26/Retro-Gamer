@@ -150,7 +150,7 @@ int snes_bridge_load_rom(const char *path)
 void snes_bridge_run_frame(bool draw)
 {
     IPPU.RenderThisFrame = draw;
-    GFX.Screen = snes_screen_buf;
+    // GFX.Screen is set once in S9xInitDisplay() and never changes — no need to reassign here
     S9xMainLoop();
 }
 
@@ -163,14 +163,14 @@ uint16_t* snes_bridge_get_framebuffer(int *width, int *height)
 
 int16_t* snes_bridge_get_audio(int *num_samples)
 {
-    // If sound is disabled, return silence
+    // If sound is disabled, skip mixing and the audio pipeline entirely.
+    // Returning NULL causes the caller to skip audioFeedSamples().
     if (!g_sound_enabled) {
-        memset(snes_audio_buf, 0, SNES_AUDIO_BUF_LEN * 2 * sizeof(int16_t));
-        *num_samples = SNES_AUDIO_BUF_LEN;
-        return snes_audio_buf;
+        *num_samples = 0;
+        return NULL;
     }
     
-    // Sound enabled - normal behavior
+    // Sound enabled — mix and return
     S9xMixSamples((void*)snes_audio_buf, SNES_AUDIO_BUF_LEN * 2);
     *num_samples = SNES_AUDIO_BUF_LEN;
     return snes_audio_buf;
@@ -240,19 +240,11 @@ bool snes_bridge_load_state(const char *path)
     snprintf(fullPath, sizeof(fullPath), "/sd%s", path);
     DBG_INFO("SNES", "Loading state from: %s", fullPath);
     
-    // Verify file exists
-    FILE *test = fopen(fullPath, "rb");
-    if (!test) {
-        DBG_ERROR("SNES", "State file not found!");
-        return false;
-    }
-    fclose(test);
-    
+    // S9xLoadState returns false if the file doesn't exist — no need to pre-check with fopen
     bool ok = S9xLoadState(fullPath);
     
     if (ok) {
         DBG_VERBOSE("SNES", "Load successful");
-        // Force screen refresh
         IPPU.RenderThisFrame = true;
     } else {
         DBG_ERROR("SNES", "Load failed!");

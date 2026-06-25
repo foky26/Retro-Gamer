@@ -28,6 +28,11 @@ static int rendered_frames = 0;
 static int last_log_frame = 0;
 static bool is_running = false;
 
+// ColecoVision keypad mapping table
+static const int coleco_keypad_map[] = {
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 10, 11
+};
+
 bool sms_bridge_init(int sample_rate)
 {
     DBG_INFO("SMS", "Initializing. Sample rate: %d", sample_rate);
@@ -226,16 +231,9 @@ uint8_t* sms_bridge_get_framebuffer(int *width, int *height)
         return NULL;
     }
     
-    if (option.console == 3) { // Game Gear
-        *width = 160;
-        *height = 144;
-    } else if (option.console == 6) { // ColecoVision
-        *width = 256;
-        *height = 192;
-    } else {
-        *width = 256;
-        *height = 192;
-    }
+    // Use viewport dimensions directly
+    *width = bitmap.viewport.w;
+    *height = bitmap.viewport.h;
     
     // Return the buffer that is NOT currently being used for drawing
     // This avoids tearing
@@ -248,23 +246,18 @@ uint8_t* sms_bridge_get_framebuffer(int *width, int *height)
 
 uint16_t* sms_bridge_get_palette(void)
 {
-    render_copy_palette(sms_palette_cache);
+    // Palette is already updated in run_frame() when draw=true
+    // No need to call render_copy_palette again
     return sms_palette_cache;
 }
 
 void sms_bridge_get_audio(int16_t **left, int16_t **right, int *num_samples)
 {
-    // If sound is disabled, return silence
+    // If sound is disabled, return NULL (skip audio pipeline)
     if (!g_sound_enabled) {
-        if (snd.stream[0]) {
-            memset(snd.stream[0], 0, snd.sample_count * sizeof(int16_t));
-        }
-        if (snd.stream[1]) {
-            memset(snd.stream[1], 0, snd.sample_count * sizeof(int16_t));
-        }
-        *left = snd.stream[0];
-        *right = snd.stream[1];
-        *num_samples = snd.sample_count;
+        *left = NULL;
+        *right = NULL;
+        *num_samples = 0;
         return;
     }
     
@@ -306,56 +299,25 @@ void sms_bridge_set_input(uint32_t buttons)
         // 0-9, * (10), # (11)
         extern coleco_t coleco;
         
-        // Determine which key is pressed (only one at a time is sufficient)
-        if (buttons & SMS_BTN_1) {
-            coleco.keypad[0] = 1;   // Key '1'
-            coleco.pio_mode = 0;    // Keypad mode
-        }
-        else if (buttons & SMS_BTN_2) {
-            coleco.keypad[0] = 2;   // Key '2'
-            coleco.pio_mode = 0;
-        }
-        else if (buttons & SMS_BTN_3) {
-            coleco.keypad[0] = 3;   // Key '3'
-            coleco.pio_mode = 0;
-        }
-        else if (buttons & SMS_BTN_4) {
-            coleco.keypad[0] = 4;   // Key '4'
-            coleco.pio_mode = 0;
-        }
-        else if (buttons & SMS_BTN_5) {
-            coleco.keypad[0] = 5;   // Key '5'
-            coleco.pio_mode = 0;
-        }
-        else if (buttons & SMS_BTN_6) {
-            coleco.keypad[0] = 6;   // Key '6'
-            coleco.pio_mode = 0;
-        }
-        else if (buttons & SMS_BTN_7) {
-            coleco.keypad[0] = 7;   // Key '7'
-            coleco.pio_mode = 0;
-        }
-        else if (buttons & SMS_BTN_8) {
-            coleco.keypad[0] = 8;   // Key '8'
-            coleco.pio_mode = 0;
-        }
-        else if (buttons & SMS_BTN_9) {
-            coleco.keypad[0] = 9;   // Key '9'
-            coleco.pio_mode = 0;
-        }
-        else if (buttons & SMS_BTN_0) {
-            coleco.keypad[0] = 0;   // Key '0'
-            coleco.pio_mode = 0;
-        }
-        else if (buttons & SMS_BTN_STAR) {
-            coleco.keypad[0] = 10;  // Key '*'
-            coleco.pio_mode = 0;
-        }
-        else if (buttons & SMS_BTN_POUND) {
-            coleco.keypad[0] = 11;  // Key '#'
-            coleco.pio_mode = 0;
-        }
-        else {
+        // Map button to keypad value using table
+        int key = -1;
+        if (buttons & SMS_BTN_1)      key = 0;
+        else if (buttons & SMS_BTN_2) key = 1;
+        else if (buttons & SMS_BTN_3) key = 2;
+        else if (buttons & SMS_BTN_4) key = 3;
+        else if (buttons & SMS_BTN_5) key = 4;
+        else if (buttons & SMS_BTN_6) key = 5;
+        else if (buttons & SMS_BTN_7) key = 6;
+        else if (buttons & SMS_BTN_8) key = 7;
+        else if (buttons & SMS_BTN_9) key = 8;
+        else if (buttons & SMS_BTN_0) key = 9;
+        else if (buttons & SMS_BTN_STAR) key = 10;
+        else if (buttons & SMS_BTN_POUND) key = 11;
+        
+        if (key >= 0) {
+            coleco.keypad[0] = coleco_keypad_map[key];
+            coleco.pio_mode = 0;  // Keypad mode
+        } else {
             // No numeric key pressed, return to joystick mode
             coleco.pio_mode = 1;
         }

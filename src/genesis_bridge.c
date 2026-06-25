@@ -41,6 +41,12 @@ static uint32_t genesis_buttons = 0;
 static unsigned int gen_screen_w = 320, gen_screen_h = 224;
 extern int zclk;
 
+// Button masks array - constant, stored in flash
+static const uint32_t gwenesis_masks[] = {
+    GEN_BTN_UP, GEN_BTN_DOWN, GEN_BTN_LEFT, GEN_BTN_RIGHT,
+    GEN_BTN_A, GEN_BTN_B, GEN_BTN_C, GEN_BTN_START
+};
+
 // =============================================
 // SAVESTATE FUNCTIONS IMPLEMENTATION
 // These are called by gwenesis_savestate.c
@@ -309,12 +315,10 @@ uint16_t* genesis_bridge_get_palette(void)
 // =============================================
 int16_t* genesis_bridge_get_audio(int *num_samples)
 {
-    // If sound is disabled, return silence
+    // If sound is disabled, return NULL (no audio)
     if (!g_sound_enabled) {
-        memset(gwenesis_ym2612_buffer, 0, GENESIS_AUDIO_BUF_LEN * sizeof(int16_t));
-        memset(gwenesis_sn76489_buffer, 0, GENESIS_AUDIO_BUF_LEN * sizeof(int16_t));
-        *num_samples = ym2612_index;
-        return gwenesis_ym2612_buffer;
+        *num_samples = 0;
+        return NULL;
     }
     
     // Sound enabled - normal behavior
@@ -330,10 +334,8 @@ void genesis_bridge_set_input(uint32_t buttons)
     static uint32_t prev = 0;
     if (buttons == prev) return;
 
-    uint32_t masks[] = {GEN_BTN_UP, GEN_BTN_DOWN, GEN_BTN_LEFT, GEN_BTN_RIGHT,
-                        GEN_BTN_A, GEN_BTN_B, GEN_BTN_C, GEN_BTN_START};
     for (int i = 0; i < 8; i++) {
-        if (buttons & masks[i])
+        if (buttons & gwenesis_masks[i])
             gwenesis_io_pad_press_button(0, i);
         else
             gwenesis_io_pad_release_button(0, i);
@@ -383,18 +385,10 @@ bool genesis_bridge_save_state(const char *path)
     snprintf(fullPath, sizeof(fullPath), "/sd%s", path);
     DBG_INFO("GEN", "Saving state to: %s", fullPath);
     
-    // Verify we can create the file
-    FILE *test = fopen(fullPath, "wb");
-    if (!test) {
-        DBG_ERROR("GEN", "Cannot open file for writing! Check SD card permissions.");
-        return false;
-    }
-    fclose(test);
-    remove(fullPath);
-    
+    // Open file directly - fopen with "wb" creates or truncates the file
     FILE *fp = fopen(fullPath, "wb");
     if (!fp) {
-        DBG_ERROR("GEN", "Still cannot open file!");
+        DBG_ERROR("GEN", "Cannot open file for writing! Check SD card permissions.");
         return false;
     }
     

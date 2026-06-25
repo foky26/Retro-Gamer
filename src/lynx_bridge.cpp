@@ -87,13 +87,10 @@ uint16_t* lynx_bridge_get_framebuffer(void)
 
 int16_t* lynx_bridge_get_audio(int *num_samples)
 {
-    // If sound is disabled, return silence
+    // If sound is disabled, return NULL (skip audio pipeline)
     if (!g_sound_enabled) {
-        if (gAudioBuffer) {
-            memset(gAudioBuffer, 0, HANDY_AUDIO_BUFFER_LENGTH * 2 * sizeof(SWORD));
-        }
         *num_samples = 0;
-        return (int16_t *)gAudioBuffer;
+        return NULL;
     }
     
     // Sound enabled - normal behavior
@@ -105,6 +102,8 @@ void lynx_bridge_set_input(uint32_t buttons)
 {
     if (!lynxSystem) return;
     ULONG lynxBtns = 0;
+    
+    // Use direct bit mapping with a single expression
     if (buttons & LYNX_BTN_UP)    lynxBtns |= BUTTON_UP;
     if (buttons & LYNX_BTN_DOWN)  lynxBtns |= BUTTON_DOWN;
     if (buttons & LYNX_BTN_LEFT)  lynxBtns |= BUTTON_LEFT;
@@ -113,6 +112,7 @@ void lynx_bridge_set_input(uint32_t buttons)
     if (buttons & LYNX_BTN_B)     lynxBtns |= BUTTON_B;
     if (buttons & LYNX_BTN_OPT1)  lynxBtns |= BUTTON_OPT1;
     if (buttons & LYNX_BTN_OPT2)  lynxBtns |= BUTTON_OPT2;
+    
     lynxSystem->SetButtonData(lynxBtns);
 }
 

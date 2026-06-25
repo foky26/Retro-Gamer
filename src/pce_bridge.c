@@ -150,7 +150,7 @@ void pce_bridge_run_frame(void)
 {
     pce_frame_done = false;
     
-    // Generate audio
+    // Generate audio only if sound is enabled
     if (pce_audio_buffer && g_sound_enabled) {
         memset(pce_audio_buffer, 0, PCE_AUDIO_BUFFER_SIZE * sizeof(int16_t) * 2);
         int samples_per_frame = 368;
@@ -158,9 +158,8 @@ void pce_bridge_run_frame(void)
         pce_audio_samples = samples_per_frame * 2;
     } else {
         pce_audio_samples = 0;
-        if (pce_audio_buffer) {
-            memset(pce_audio_buffer, 0, PCE_AUDIO_BUFFER_SIZE * sizeof(int16_t) * 2);
-        }
+        // No need to memset audio buffer when sound is disabled
+        // The bridge will return NULL and num_samples=0
     }
     
     // Run the frame (emulator will call osd_input_read internally)
@@ -186,6 +185,13 @@ uint16_t* pce_bridge_get_palette(void)
 
 int16_t* pce_bridge_get_audio(int *num_samples)
 {
+    // If sound is disabled, return NULL (skip audio pipeline)
+    if (!g_sound_enabled) {
+        *num_samples = 0;
+        return NULL;
+    }
+    
+    // Sound enabled - normal behavior
     *num_samples = pce_audio_samples;
     return pce_audio_buffer;
 }
