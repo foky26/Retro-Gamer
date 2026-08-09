@@ -22,7 +22,6 @@
 #define DEBUG_VGA_OSD 1
 #include "src/debug.h"
 
-
 // Sound control
 #include "src/sound_control.h"
 
@@ -58,10 +57,6 @@ extern "C" {
 // ============================================================================
 //  BOARD SELECTION
 // ============================================================================
-// Define the board you are using:
-// - BOARD_TTGO_VGA32: LilyGO TTGO VGA32 (default)
-// - BOARD_OLIMEX_SBC: Olimex ESP32-SBC-FabGL Rev B
-// ============================================================================
 #define BOARD_TYPE BOARD_TTGO_VGA32
 
 // ============================================================================
@@ -69,7 +64,6 @@ extern "C" {
 // ============================================================================
 
 #if BOARD_TYPE == BOARD_TTGO_VGA32
-    // LilyGO TTGO VGA32
     #define BOARD_NAME "LilyGO TTGO VGA32"
     #define VGA_RED1    GPIO_NUM_21
     #define VGA_RED0    GPIO_NUM_22
@@ -87,7 +81,6 @@ extern "C" {
     #define AUDIO_DAC   GPIO_NUM_25
 
 #elif BOARD_TYPE == BOARD_OLIMEX_SBC
-    // Olimex ESP32-SBC-FabGL Rev B
     #define BOARD_NAME "Olimex ESP32-SBC-FabGL Rev B"
     #define VGA_RED1    GPIO_NUM_21
     #define VGA_RED0    GPIO_NUM_22
@@ -143,6 +136,10 @@ fabgl::VGAController    DisplayController;
 fabgl::PS2Controller    PS2Ctrl;
 fabgl::Keyboard *       Kbd = nullptr;
 
+fabgl::Canvas * gCanvas = nullptr;
+fabgl::Bitmap * nesBitmap = nullptr;
+uint8_t * nesBitmapData = nullptr;
+
 // ============================================================================
 //  RGB CONVERSION FUNCTIONS
 // ============================================================================
@@ -159,11 +156,21 @@ inline uint8_t rgb565_to_rgb222_fabgl(uint16_t rgb565)
     uint8_t g6 = (rgb565 >>  5) & 0x3F;
     uint8_t b5 =  rgb565        & 0x1F;
 
-    uint8_t r2 = (r5 * 3 + 15) / 31;
-    uint8_t g2 = (g6 * 3 + 31) / 63;
-    uint8_t b2 = (b5 * 3 + 15) / 31;
+    uint8_t r2 = r5 >> 3;
+    uint8_t g2 = g6 >> 4;
+    uint8_t b2 = b5 >> 3;
 
     return (r2 << 4) | (g2 << 2) | b2;
+}
+
+inline uint8_t makeRawPixelFromRGB565(uint16_t rgb565) {
+    uint8_t r5 = (rgb565 >> 11) & 0x1F;
+    uint8_t g6 = (rgb565 >> 5) & 0x3F;
+    uint8_t b5 = rgb565 & 0x1F;
+    uint8_t r2 = r5 >> 3;
+    uint8_t g2 = g6 >> 4;
+    uint8_t b2 = b5 >> 3;
+    return makeRawPixelFromRGB222Components(r2, g2, b2);
 }
 
 inline fabgl::RGB888 rgb222_to_rgb888(uint8_t r2, uint8_t g2, uint8_t b2) {
@@ -196,6 +203,8 @@ inline fabgl::RGB888 rgb222_to_rgb888(uint8_t r2, uint8_t g2, uint8_t b2) {
 //  NES PALETTE SYSTEM
 // ============================================================================
 static uint8_t nesPalette222[256];
+static uint8_t nesPaletteRawPixels[64];
+static bool nesPaletteRawPixelsValid = false;
 
 #define NES_PALETTE_COUNT 5
 static int nesCurrentPalette = 0;
@@ -306,15 +315,17 @@ void updateNESPalette() {
     const uint8_t (*pal)[3] = nes_palettes[nesCurrentPalette];
     uint8_t temp[64];
     for (int i = 0; i < 64; i++) {
-        uint8_t r = pal[i][2];
+        uint8_t r = pal[i][0];
         uint8_t g = pal[i][1];
-        uint8_t b = pal[i][0];
+        uint8_t b = pal[i][2];
         temp[i] = rgb888_to_rgb222_fabgl(r, g, b);
+        nesPaletteRawPixels[i] = makeRawPixelFromRGB222(temp[i]);
     }
     memcpy(nesPalette222, temp, 64);
     memcpy(nesPalette222 + 64, temp, 64);
     memcpy(nesPalette222 + 128, temp, 64);
     memcpy(nesPalette222 + 192, temp, 64);
+    nesPaletteRawPixelsValid = true;
 }
 
 // ============================================================================
@@ -436,13 +447,31 @@ typedef enum { VIEW_ALL = 0, VIEW_FAVORITES, VIEW_RECENT, VIEW_COUNT } view_mode
 static view_mode_t viewMode = VIEW_ALL;
 
 // ============================================================================
-//  HELPER FUNCTION TO CLEAR A SCANLINE
+//  HELPER FUNCTIONS
 // ============================================================================
+static uint8_t blackRawPixel = 0;
+
 inline void clearScanline(int y) {
     uint8_t* line = (uint8_t*)DisplayController.getScanline(y);
     if (line) {
         memset(line, 0, 320);
     }
+}
+
+inline uint8_t makeRawPixelFromRGB222Components(uint8_t r2, uint8_t g2, uint8_t b2) {
+    fabgl::RGB222 rgb;
+    memset(&rgb, 0, sizeof(rgb));
+    rgb.B = b2 & 0x3;
+    rgb.G = g2 & 0x3;
+    rgb.R = r2 & 0x3;
+    return DisplayController.createRawPixel(rgb);
+}
+
+inline uint8_t makeRawPixelFromRGB222(uint8_t rgb222) {
+    uint8_t r2 = (rgb222 >> 4) & 0x3;
+    uint8_t g2 = (rgb222 >> 2) & 0x3;
+    uint8_t b2 = rgb222 & 0x3;
+    return makeRawPixelFromRGB222Components(r2, g2, b2);
 }
 
 // ============================================================================
@@ -455,12 +484,33 @@ bool initVGA() {
         VGA_BLUE1, VGA_BLUE0,
         VGA_HSYNC, VGA_VSYNC
     );
-    DisplayController.setResolution(QVGA_320x240_60Hz); 
-    
+    DisplayController.setResolution(QVGA_320x240_60Hz);
+
+    fabgl::RGB222 blackRGB;
+    blackRGB.B = 0;
+    blackRGB.G = 0;
+    blackRGB.R = 0;
+    blackRawPixel = DisplayController.createRawPixel(blackRGB);
+
+    gCanvas = new fabgl::Canvas(&DisplayController);
+    if (gCanvas) {
+        gCanvas->setBrushColor(C_BLACK);
+        gCanvas->clear();
+    }
+
+    nesBitmapData = (uint8_t*)heap_caps_malloc(320 * 240, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!nesBitmapData) {
+        nesBitmapData = (uint8_t*)heap_caps_malloc(320 * 240, MALLOC_CAP_8BIT);
+    }
+    if (nesBitmapData) {
+        memset(nesBitmapData, 0, 320 * 240);
+        nesBitmap = new fabgl::Bitmap(320, 240, nesBitmapData, fabgl::PixelFormat::Native);
+    }
+
     for (int y = 0; y < 240; y++) {
         clearScanline(y);
     }
-    
+
     DBG_INFO("VGA", "VGAController: 320x240 @ 60Hz, 64 colors (RGB222) - Board: %s", BOARD_NAME);
     return true;
 }
@@ -476,7 +526,7 @@ bool initPS2() {
 
 bool initSD() {
     SPI.begin(SD_CLK, SD_MISO, SD_MOSI, SD_CS);
-    
+
     if (!SD.begin(SD_CS, SPI, 20000000)) {
         DBG_WARN("SD", "Mount failed with 20MHz, trying 10MHz...");
         if (!SD.begin(SD_CS, SPI, 10000000)) {
@@ -484,12 +534,12 @@ bool initSD() {
             return false;
         }
     }
-    
+
     if (SD.cardType() == CARD_NONE) {
         DBG_ERROR("SD", "No card found!");
         return false;
     }
-    
+
     DBG_INFO("SD", "Card type: %d, size: %llu MB", SD.cardType(), SD.cardSize() / (1024 * 1024));
     return true;
 }
@@ -505,7 +555,7 @@ emu_type_t getEmuType(const char *filename) {
     if (strcasecmp(ext, "gb") == 0 || strcasecmp(ext, "gbc") == 0) return EMU_GB;
     if (strcasecmp(ext, "sms") == 0) return EMU_SMS;
     if (strcasecmp(ext, "gg") == 0) return EMU_GG;
-    if (strcasecmp(ext, "sg") == 0) return EMU_SG1000;   // <-- AÑADIR
+    if (strcasecmp(ext, "sg") == 0) return EMU_SG1000;
     if (strcasecmp(ext, "pce") == 0) return EMU_PCE;
     if (strcasecmp(ext, "sfc") == 0 || strcasecmp(ext, "smc") == 0) return EMU_SNES;
     if (strcasecmp(ext, "lnx") == 0) return EMU_LYNX;
@@ -551,20 +601,14 @@ const char* emuShortName(emu_type_t t) {
 // ============================================================================
 //  ROM SCANNER WITH CACHE
 // ============================================================================
-
-/**
- * Get the modification time of ROM directories
- * Used to detect if the ROM list needs to be rescanned
- */
 static time_t getRomsDirectoriesModTime() {
     time_t maxTime = 0;
     const char *dirs[] = {
         "/roms/nes", "/roms/gb", "/roms/gbc", "/roms/sms", "/roms/gg",
         "/roms/pce", "/roms/snes", "/roms/lnx", "/roms/col",
-        "/roms/md",
-        "/roms/sg1000"
+        "/roms/md", "/roms/sg1000"
     };
-    
+
     for (int i = 0; i < (int)(sizeof(dirs)/sizeof(dirs[0])); i++) {
         File d = SD.open(dirs[i]);
         if (d && d.isDirectory()) {
@@ -576,9 +620,6 @@ static time_t getRomsDirectoriesModTime() {
     return maxTime;
 }
 
-/**
- * Show a status message in the menu (bottom-left corner)
- */
 static void showStatusMessage(const char *message) {
     auto cv = new fabgl::Canvas(&DisplayController);
     cv->setBrushColor(C_BLACK);
@@ -589,9 +630,6 @@ static void showStatusMessage(const char *message) {
     delete cv;
 }
 
-/**
- * Show a loading message in the center of the screen
- */
 static void showLoadingMessage(const char *message) {
     auto cv = new fabgl::Canvas(&DisplayController);
     cv->setBrushColor(C_BLACK);
@@ -602,9 +640,6 @@ static void showLoadingMessage(const char *message) {
     delete cv;
 }
 
-/**
- * Recursively scan a directory for ROM files
- */
 void scanDir(File dir, const char *base) {
     File entry;
     while ((entry = dir.openNextFile()) && romCount < MAX_ROMS) {
@@ -622,18 +657,15 @@ void scanDir(File dir, const char *base) {
     }
 }
 
-/**
- * Save ROM cache to SD card for faster boot
- */
 void saveRomCache() {
     if (!SD.exists("/retro-go")) SD.mkdir("/retro-go");
     File cache = SD.open(ROM_CACHE_FILE, FILE_WRITE);
     if (!cache) return;
-    
+
     time_t romsTime = getRomsDirectoriesModTime();
     cache.print("TIMESTAMP:");
     cache.println((int32_t)romsTime);
-    
+
     for (int i = 0; i < romCount; i++) {
         cache.println(romFiles[i]);
     }
@@ -641,24 +673,20 @@ void saveRomCache() {
     DBG_VERBOSE("ROM", "Cache saved with %d files, timestamp: %ld", romCount, (long)romsTime);
 }
 
-/**
- * Load ROM cache from SD card
- * Returns true if cache is valid and loaded
- */
 bool loadRomCache() {
     File cache = SD.open(ROM_CACHE_FILE, FILE_READ);
     if (!cache) return false;
-    
+
     int32_t savedTimestamp = 0;
     String firstLine = cache.readStringUntil('\n');
     firstLine.trim();
     cache.seek(0);
-    
+
     if (firstLine.startsWith("TIMESTAMP:")) {
         savedTimestamp = firstLine.substring(10).toInt();
         cache.readStringUntil('\n');
     }
-    
+
     romCount = 0;
     while (cache.available() && romCount < MAX_ROMS) {
         String lineStr = cache.readStringUntil('\n');
@@ -668,14 +696,12 @@ bool loadRomCache() {
         }
     }
     cache.close();
-    
+
     time_t currentRomsTime = getRomsDirectoriesModTime();
-    
-    // Compare timestamps to detect changes
+
     if (savedTimestamp != 0 && currentRomsTime > savedTimestamp) {
         DBG_VERBOSE("ROM", "Cache outdated (cache: %ld, current: %ld)", 
                      (long)savedTimestamp, (long)currentRomsTime);
-        // Free loaded files
         for (int i = 0; i < romCount; i++) {
             free(romFiles[i]);
             romFiles[i] = NULL;
@@ -683,16 +709,12 @@ bool loadRomCache() {
         romCount = 0;
         return false;
     }
-    
+
     DBG_VERBOSE("ROM", "Cache loaded: %d files, timestamp: %ld", romCount, (long)savedTimestamp);
     return romCount > 0;
 }
 
-/**
- * Scan all ROM directories and build the ROM list
- */
 void scanAllRoms() {
-    // Clear previous list
     for (int i = 0; i < romCount; i++) { 
         free(romFiles[i]); 
         romFiles[i] = NULL; 
@@ -700,24 +722,21 @@ void scanAllRoms() {
     romCount = 0; 
     selectedRom = 0; 
     scrollOffset = 0;
-    
-    // Try loading cache first
+
     if (loadRomCache()) {
         return;
     }
-    
-    // If cache is invalid, scan SD card
+
     DBG_INFO("ROM", "Scanning SD card...");
     showLoadingMessage("Reading SD...");
     delay(50);
-    
+
     const char *dirs[] = {
         "/roms/nes", "/roms/gb", "/roms/gbc", "/roms/sms", "/roms/gg",
         "/roms/pce", "/roms/snes", "/roms/lnx", "/roms/col",
-        "/roms/md",
-        "/roms/sg1000"
+        "/roms/md", "/roms/sg1000"
     };
-    
+
     for (int i = 0; i < (int)(sizeof(dirs)/sizeof(dirs[0])); i++) {
         File d = SD.open(dirs[i]);
         if (d && d.isDirectory()) { 
@@ -725,44 +744,35 @@ void scanAllRoms() {
             d.close();
         }
     }
-    
+
     DBG_INFO("ROM", "Found %d file(s)", romCount);
-    
+
     if (romCount > 0) {
         saveRomCache();
     }
-    
-    // Clear loading message
+
     auto cv = new fabgl::Canvas(&DisplayController);
     cv->setBrushColor(C_BLACK);
     cv->fillRectangle(100, 110, 220, 130);
     delete cv;
 }
 
-/**
- * Force refresh of the ROM list
- */
 void refreshRomList() {
     showLoadingMessage("Refreshing...");
     delay(50);
-    
-    // Delete cache to force rescan
+
     if (SD.exists(ROM_CACHE_FILE)) {
         SD.remove(ROM_CACHE_FILE);
         DBG_VERBOSE("ROM", "Cache file removed");
     }
-    
-    // Clear list
+
     for (int i = 0; i < romCount; i++) { 
         free(romFiles[i]); 
         romFiles[i] = NULL; 
     }
     romCount = 0;
-    
-    // Rescan
+
     scanAllRoms();
-    
-    // Redraw menu
     drawMenu();
 }
 
@@ -775,13 +785,10 @@ bool isFavorite(const char *path) {
     return false;
 }
 
-/**
- * Generic helper to load a list of strings from a file
- */
 static int loadStringList(const char *path, char **list, int maxCount) {
     File f = SD.open(path, FILE_READ);
     if (!f) return 0;
-    
+
     int count = 0;
     char line[256];
     while (f.available() && count < maxCount) {
@@ -866,53 +873,57 @@ void addToRecent(const char *path) {
 // ============================================================================
 
 void blitGenesis(uint8_t *fb, int w, int h) {
-    if (!fb) return;
-    
-    int xOffset = (320 - w) / 2;
-    int yOffset = (240 - h) / 2;
-    
-    extern unsigned short CRAM[64];
-    
-    // Single pass: clear and render
-    for (int y = 0; y < 240; y++) {
-        uint8_t* dest = (uint8_t*)DisplayController.getScanline(y);
-        if (y >= yOffset && y < yOffset + h) {
-            memset(dest, 0, xOffset);
-            uint8_t* src = fb + (y - yOffset) * w;
-            for (int x = 0; x < w; x++) {
-                uint8_t idx = src[x] & 0x3F;
-                uint16_t pixel = CRAM[idx];
-                uint8_t r4 = (pixel >> 0) & 0x0F;
-                uint8_t g4 = (pixel >> 4) & 0x0F;
-                uint8_t b4 = (pixel >> 8) & 0x0F;
-                uint8_t rgb222 = ((b4 >> 2) << 4) | ((g4 >> 2) << 2) | (r4 >> 2);
-                dest[(xOffset + x) ^ 2] = rgb222;
-            }
-            memset(dest + xOffset + w, 0, 320 - (xOffset + w));
-        } else {
-            memset(dest, 0, 320);
+if (!fb) return;
+
+int xOffset = (320 - w) / 2;
+int yOffset = (240 - h) / 2;
+
+extern unsigned short CRAM[64];
+
+// Single pass: clear and render
+for (int y = 0; y < 240; y++) {
+    uint8_t* dest = (uint8_t*)DisplayController.getScanline(y);
+    if (y >= yOffset && y < yOffset + h) {
+        memset(dest, 0, xOffset);
+        uint8_t* src = fb + (y - yOffset) * w;
+        for (int x = 0; x < w; x++) {
+            uint8_t idx = src[x] & 0x3F;
+            uint16_t pixel = CRAM[idx];
+            uint8_t r4 = (pixel >> 0) & 0x0F;
+            uint8_t g4 = (pixel >> 4) & 0x0F;
+            uint8_t b4 = (pixel >> 8) & 0x0F;
+            uint8_t rgb222 = ((b4 >> 2) << 4) | ((g4 >> 2) << 2) | (r4 >> 2);
+            dest[(xOffset + x) ^ 2] = rgb222;
         }
+        memset(dest + xOffset + w, 0, 320 - (xOffset + w));
+    } else {
+        memset(dest, 0, 320);
     }
+}
 }
 
 void blitNES(uint8_t *fb) {
     if (!fb) return;
     
-    int nesPitch = 272;
-    int nesOffset = 8;
-    int visibleWidth = 256;
-    int targetX = 32;
+    if (!nesPaletteRawPixelsValid) {
+        updateNESPalette();
+    }
+    
+    const int nesPitch = 272;
+    const int nesOffset = 8;
+    const int visibleWidth = 256;
+    const int targetX = 32;
     
     for (int y = 0; y < 240; y++) {
-        uint8_t* dest = (uint8_t*)DisplayController.getScanline(y);
         uint8_t* src = fb + y * nesPitch + nesOffset;
-        
-        memset(dest, 0, targetX);
-        for (int x = 0; x < visibleWidth; x++) {
-            uint8_t idx = src[x] & 0x3F;
-            dest[(targetX + x) ^ 2] = nesPalette222[idx];
+        for (int x = 0; x < 320; x++) {
+            uint8_t rawPixel = blackRawPixel;
+            if (x >= targetX && x < targetX + visibleWidth) {
+                uint8_t idx = src[x - targetX] & 0x3F;
+                rawPixel = nesPaletteRawPixels[idx];
+            }
+            DisplayController.setRawPixel(x, y, rawPixel);
         }
-        memset(dest + targetX + visibleWidth, 0, 320 - (targetX + visibleWidth));
     }
 }
 
@@ -921,17 +932,13 @@ void blitGB(uint16_t *fb) {
     int xOffset = 80, yOffset = 48;
     
     for (int y = 0; y < 240; y++) {
-        uint8_t* dest = (uint8_t*)DisplayController.getScanline(y);
-        if (y < yOffset || y >= yOffset + 144) {
-            memset(dest, 0, 320);
-        } else {
-            memset(dest, 0, xOffset);
-            uint8_t* src = (uint8_t*)fb + (y - yOffset) * 160 * 2;
+        for (int x = 0; x < 320; x++) {
+            uint8_t rawPixel = blackRawPixel;
             
-            for (int x = 0; x < 160; x++) {
-                uint8_t hi = src[x * 2];
-                uint8_t lo = src[x * 2 + 1];
-                uint16_t pixel = (hi << 8) | lo;
+            if (y >= yOffset && y < yOffset + 144 && x >= xOffset && x < xOffset + 160) {
+                uint8_t* src = (uint8_t*)fb + (y - yOffset) * 160 * 2;
+                int idx = (x - xOffset) * 2;
+                uint16_t pixel = (src[idx] << 8) | src[idx + 1];
                 
                 uint8_t r5 = (pixel >> 11) & 0x1F;
                 uint8_t g6 = (pixel >> 5) & 0x3F;
@@ -941,10 +948,9 @@ void blitGB(uint16_t *fb) {
                 uint8_t g2 = g6 >> 4;
                 uint8_t b2 = b5 >> 3;
                 
-                uint8_t rgb222 = (b2 << 4) | (g2 << 2) | r2;
-                dest[(xOffset + x) ^ 2] = rgb222;
+                rawPixel = makeRawPixelFromRGB222Components(r2, g2, b2);
             }
-            memset(dest + xOffset + 160, 0, 320 - (xOffset + 160));
+            DisplayController.setRawPixel(x, y, rawPixel);
         }
     }
 }
@@ -952,15 +958,9 @@ void blitGB(uint16_t *fb) {
 void blitSMS(uint8_t *fb, uint16_t *pal, int w, int h) {
     if (!fb || !pal) return;
     
-    static uint8_t *backBuffer = NULL;
-    static uint8_t smsToRGB222[64];
-    static uint16_t lastPal[64];
-    
-    if (!backBuffer) {
-        backBuffer = (uint8_t*)heap_caps_malloc(320 * 240, MALLOC_CAP_SPIRAM);
-        if (backBuffer) memset(backBuffer, 0, 320 * 240);
-        else return;
-    }
+    static uint8_t smsPaletteRawPixels[32];
+    static uint16_t lastPal[32];
+    static bool smsPaletteValid = false;
     
     bool isGameGear = (w == 160);
     
@@ -988,73 +988,35 @@ void blitSMS(uint8_t *fb, uint16_t *pal, int w, int h) {
         }
     }
     
-    if (palChanged) {
+    if (palChanged || !smsPaletteValid) {
         for (int i = 0; i < 32; i++) {
-            uint16_t rgb565 = pal[i];
-            
-            uint8_t r = (rgb565 >> 11) & 0x1F;
-            uint8_t g = (rgb565 >> 5) & 0x3F;
-            uint8_t b = rgb565 & 0x1F;
-            
-            uint8_t temp = r;
-            r = b;
-            b = temp;
-            
-            r = (r << 3) | (r >> 2);
-            g = (g << 2) | (g >> 4);
-            b = (b << 3) | (b >> 2);
-            
-            uint8_t r2 = r >> 6;
-            uint8_t g2 = g >> 6;
-            uint8_t b2 = b >> 6;
-            smsToRGB222[i] = (r2 << 4) | (g2 << 2) | b2;
+            smsPaletteRawPixels[i] = makeRawPixelFromRGB565(pal[i]);
         }
         memcpy(lastPal, pal, sizeof(lastPal));
+        smsPaletteValid = true;
     }
     
     int yStart = (yOffset < 0) ? 0 : yOffset;
     int yEnd = (yOffset + h > 240) ? 240 : yOffset + h;
     
-    for (int y = yStart; y < yEnd; y++) {
-        uint8_t *dest = backBuffer + (y * 320);
-        uint8_t *src = fb + ((y - yOffset) * pitch);
-        
-        if (xOffset > 0) {
-            memset(dest, 0, xOffset);
-        }
-        if (xOffset + visibleWidth < 320) {
-            memset(dest + xOffset + visibleWidth, 0, 320 - (xOffset + visibleWidth));
-        }
-        
-        for (int x = 0; x < visibleWidth; x++) {
-            int srcIdx = x + startPixel;
-            uint8_t idx = smsToRGB222[src[srcIdx] & 0x1F];
-            dest[xOffset + x] = idx;
-        }
-    }
-    
-    for (int y = yStart; y < yEnd; y++) {
-        uint8_t *vga = (uint8_t*)DisplayController.getScanline(y);
-        uint8_t *buf = backBuffer + (y * 320);
+    for (int y = 0; y < 240; y++) {
+        uint8_t *src = (y >= yStart && y < yEnd) ? (fb + ((y - yOffset) * pitch)) : nullptr;
         for (int x = 0; x < 320; x++) {
-            vga[x ^ 2] = buf[x];
+            uint8_t rawPixel = blackRawPixel;
+            if (src && x >= xOffset && x < xOffset + visibleWidth) {
+                int srcIdx = (x - xOffset) + startPixel;
+                uint8_t idx = src[srcIdx] & 0x1F;
+                rawPixel = smsPaletteRawPixels[idx];
+            }
+            DisplayController.setRawPixel(x, y, rawPixel);
         }
-    }
-    
-    for (int y = 0; y < yStart; y++) {
-        uint8_t *vga = (uint8_t*)DisplayController.getScanline(y);
-        memset(vga, 0, 320);
-    }
-    for (int y = yEnd; y < 240; y++) {
-        uint8_t *vga = (uint8_t*)DisplayController.getScanline(y);
-        memset(vga, 0, 320);
     }
 }
 
 void blitPCE(uint8_t *fb, uint16_t *pal, int w, int h) {
     if (!fb) return;
     
-    static uint8_t pceRgb222Cache[256] = {0};
+    static uint8_t pceRawPixels[256];
     static uint16_t lastPal[256] = {0};
     static bool cacheValid = false;
     
@@ -1069,11 +1031,11 @@ void blitPCE(uint8_t *fb, uint16_t *pal, int w, int h) {
                 uint16_t rgb565 = pal[i];
                 uint8_t r5 = (rgb565 >> 11) & 0x1F;
                 uint8_t g6 = (rgb565 >> 5) & 0x3F;
-                uint8_t b5 = (rgb565 >> 0) & 0x1F;
+                uint8_t b5 = rgb565 & 0x1F;
                 uint8_t r2 = r5 >> 3;
                 uint8_t g2 = g6 >> 4;
                 uint8_t b2 = b5 >> 3;
-                pceRgb222Cache[i] = (b2 << 4) | (g2 << 2) | r2;
+                pceRawPixels[i] = makeRawPixelFromRGB222Components(r2, g2, b2);
             }
             memcpy(lastPal, pal, 256 * sizeof(uint16_t));
             cacheValid = true;
@@ -1083,61 +1045,49 @@ void blitPCE(uint8_t *fb, uint16_t *pal, int w, int h) {
     int xOffset = (320 - w) / 2;
     int yOffset = (240 - h) / 2;
     
-    for (int y = 0; y < yOffset; y++) {
-        uint8_t* dest = (uint8_t*)DisplayController.getScanline(y);
-        memset(dest, 0, 320);
-    }
-    for (int y = yOffset + h; y < 240; y++) {
-        uint8_t* dest = (uint8_t*)DisplayController.getScanline(y);
-        memset(dest, 0, 320);
-    }
-    
-    for (int y = yOffset; y < yOffset + h && y < 240; y++) {
-        uint8_t* dest = (uint8_t*)DisplayController.getScanline(y);
-        memset(dest, 0, xOffset);
-        memset(dest + xOffset + w, 0, 320 - (xOffset + w));
-    }
-    
-    for (int y = 0; y < h && (y + yOffset) < 240; y++) {
-        uint8_t* dest = (uint8_t*)DisplayController.getScanline(y + yOffset);
-        uint8_t* src = fb + y * 368;
-        
-        for (int x = 0; x < w && (x + xOffset) < 320; x++) {
-            uint8_t idx = src[x] & 0xFF;
-            dest[(xOffset + x) ^ 2] = pceRgb222Cache[idx];
+    for (int y = 0; y < 240; y++) {
+        for (int x = 0; x < 320; x++) {
+            uint8_t rawPixel = blackRawPixel;
+            
+            if (y >= yOffset && y < yOffset + h && x >= xOffset && x < xOffset + w) {
+                uint8_t *src = fb + (y - yOffset) * 368;
+                uint8_t idx = src[x - xOffset] & 0xFF;
+                rawPixel = pceRawPixels[idx];
+            }
+            DisplayController.setRawPixel(x, y, rawPixel);
         }
     }
 }
+
 
 void blitSNES(uint16_t *fb, int w, int h) {
     if (!fb) return;
     int xOffset = (320 - w) / 2, yOffset = (240 - h) / 2;
+    
     for (int y = 0; y < 240; y++) {
-        uint8_t* dest = (uint8_t*)DisplayController.getScanline(y);
-        if (y < yOffset || y >= yOffset + h) {
-            memset(dest, 0, 320);
-        } else {
-            memset(dest, 0, xOffset);
-            uint16_t* src = fb + (y - yOffset) * w;
-            for (int x = 0; x < w; x++) {
-                uint16_t pixel = src[x];
-                uint8_t b5 = (pixel >> 11) & 0x1F;
+        for (int x = 0; x < 320; x++) {
+            uint8_t rawPixel = blackRawPixel;
+            if (y >= yOffset && y < yOffset + h && x >= xOffset && x < xOffset + w) {
+                uint16_t *src = fb + (y - yOffset) * w;
+                uint16_t pixel = src[x - xOffset];
+                
+                
+                uint8_t r5 = (pixel >> 11) & 0x1F;
                 uint8_t g6 = (pixel >> 5) & 0x3F;
-                uint8_t r5 = (pixel >> 0) & 0x1F;
+                uint8_t b5 = pixel & 0x1F;
+                
+              
                 uint8_t r2 = r5 >> 3;
                 uint8_t g2 = g6 >> 4;
                 uint8_t b2 = b5 >> 3;
-                uint8_t rgb222 = (r2 << 4) | (g2 << 2) | b2;
-                dest[(xOffset + x) ^ 2] = rgb222;
+                
+                rawPixel = makeRawPixelFromRGB222Components(r2, g2, b2);
             }
-            memset(dest + xOffset + w, 0, 320 - (xOffset + w));
+            DisplayController.setRawPixel(x, y, rawPixel);
         }
     }
 }
 
-/**
- * Lynx blitting with rotation support
- */
 void blitLynxRotated(uint16_t *fb) {
     if (!fb) return;
     
@@ -1149,35 +1099,30 @@ void blitLynxRotated(uint16_t *fb) {
     int xOffset = (320 - dstWidth) / 2;
     int yOffset = (240 - dstHeight) / 2;
     
-    for (int y = 0; y < dstHeight; y++) {
-        uint8_t* dest = (uint8_t*)DisplayController.getScanline(y + yOffset);
-        memset(dest, 0, xOffset);
-        memset(dest + xOffset + dstWidth, 0, 320 - (xOffset + dstWidth));
-        
-        for (int x = 0; x < dstWidth; x++) {
-            int srcX = y;
-            int srcY = srcHeight - 1 - x;
+    for (int y = 0; y < 240; y++) {
+        for (int x = 0; x < 320; x++) {
+            uint8_t rawPixel = blackRawPixel;
             
-            // Bounds are always within range
-            uint16_t pixel = fb[srcY * srcWidth + srcX];
-            uint8_t r5 = (pixel >> 11) & 0x1F;
-            uint8_t g6 = (pixel >> 5) & 0x3F;
-            uint8_t b5 = (pixel >> 0) & 0x1F;
-            uint8_t r2 = b5 >> 3;
-            uint8_t g2 = g6 >> 4;
-            uint8_t b2 = r5 >> 3;
-            uint8_t rgb222 = (r2 << 4) | (g2 << 2) | b2;
-            dest[(xOffset + x) ^ 2] = rgb222;
+            if (y >= yOffset && y < yOffset + dstHeight && x >= xOffset && x < xOffset + dstWidth) {
+                int srcX = y - yOffset;
+                int srcY = srcHeight - 1 - (x - xOffset);
+                
+                if (srcX >= 0 && srcX < srcWidth && srcY >= 0 && srcY < srcHeight) {
+                    uint16_t pixel = fb[srcY * srcWidth + srcX];
+                    
+                    uint8_t r5 = (pixel >> 11) & 0x1F;
+                    uint8_t g6 = (pixel >> 5) & 0x3F;
+                    uint8_t b5 = pixel & 0x1F;
+                    
+                    uint8_t r2 = r5 >> 3;
+                    uint8_t g2 = g6 >> 4;
+                    uint8_t b2 = b5 >> 3;
+                    
+                    rawPixel = makeRawPixelFromRGB222Components(r2, g2, b2);
+                }
+            }
+            DisplayController.setRawPixel(x, y, rawPixel);
         }
-    }
-    
-    for (int y = 0; y < yOffset; y++) {
-        uint8_t* dest = (uint8_t*)DisplayController.getScanline(y);
-        memset(dest, 0, 320);
-    }
-    for (int y = yOffset + dstHeight; y < 240; y++) {
-        uint8_t* dest = (uint8_t*)DisplayController.getScanline(y);
-        memset(dest, 0, 320);
     }
 }
 
@@ -1188,24 +1133,24 @@ void blitLynx(uint16_t *fb) {
         blitLynxRotated(fb);
     } else {
         for (int y = 0; y < 240; y++) {
-            uint8_t* dest = (uint8_t*)DisplayController.getScanline(y);
-            if (y < 69 || y >= 69 + 102) {
-                memset(dest, 0, 320);
-            } else {
-                memset(dest, 0, 80);
-                uint16_t* src = fb + (y - 69) * 160;
-                for (int x = 0; x < 160; x++) {
-                    uint16_t pixel = src[x];
+            for (int x = 0; x < 320; x++) {
+                uint8_t rawPixel = blackRawPixel;
+                
+                if (y >= 69 && y < 69 + 102 && x >= 80 && x < 80 + 160) {
+                    uint16_t *src = fb + (y - 69) * 160;
+                    uint16_t pixel = src[x - 80];
+                    
                     uint8_t r5 = (pixel >> 11) & 0x1F;
                     uint8_t g6 = (pixel >> 5) & 0x3F;
-                    uint8_t b5 = (pixel >> 0) & 0x1F;
-                    uint8_t r2 = b5 >> 3;
+                    uint8_t b5 = pixel & 0x1F;
+                    
+                    uint8_t r2 = r5 >> 3;
                     uint8_t g2 = g6 >> 4;
-                    uint8_t b2 = r5 >> 3;
-                    uint8_t rgb222 = (r2 << 4) | (g2 << 2) | b2;
-                    dest[(80 + x) ^ 2] = rgb222;
+                    uint8_t b2 = b5 >> 3;
+                    
+                    rawPixel = makeRawPixelFromRGB222Components(r2, g2, b2);
                 }
-                memset(dest + 240, 0, 80);
+                DisplayController.setRawPixel(x, y, rawPixel);
             }
         }
     }
@@ -1396,27 +1341,21 @@ void cleanExitToMenu() {
 //  DRAWING FUNCTIONS (Canvas)
 // ============================================================================
 
-/**
- * Draw the main file selection menu
- */
 void drawMenu() {
     auto cv = new fabgl::Canvas(&DisplayController);
     cv->setBrushColor(C_BLACK);
     cv->clear();
 
-    // Title
     cv->setPenColor(C_BRIGHT_CYAN);
     cv->selectFont(&fabgl::FONT_8x16);
     cv->drawText(4, 4, "RETRO-GAMER");
     
-    // Show IP if connected
     if (wifi_manager_is_connected()) {
         cv->setPenColor(C_BRIGHT_GREEN);
         cv->selectFont(&fabgl::FONT_8x8);
         cv->drawTextFmt(180, 8, "WiFi:%s", wifi_manager_get_ip());
     }
 
-    // Tabs (All, Favs, Recent)
     cv->selectFont(&fabgl::FONT_8x16);
     const char *tabs[] = { "All", "Favs", "Recent" };
     int tx = 8;
@@ -1536,20 +1475,15 @@ void drawMenu() {
     delete cv;
 }
 
-/**
- * Draw the boot splash screen
- */
 void drawBoot() {
     auto cv = new fabgl::Canvas(&DisplayController);
     cv->setBrushColor(C_BLACK);
     cv->clear();
     
-    // Title
     cv->setPenColor(C_BRIGHT_CYAN);
     cv->selectFont(&fabgl::FONT_8x16);
     cv->drawText(4, 4, "RETRO-GAMER");
     
-    // Show IP if connected
     if (wifi_manager_is_connected()) {
         cv->setPenColor(C_BRIGHT_GREEN);
         cv->selectFont(&fabgl::FONT_8x8);
@@ -1592,9 +1526,6 @@ void drawBoot() {
     delay(2500);
 }
 
-/**
- * Draw the in-game pause menu
- */
 void drawInGameMenu() {
     auto cv = new fabgl::Canvas(&DisplayController);
     int bx = 50, by = 30, bw = 220, bh = 195;
@@ -1672,7 +1603,7 @@ void drawInGameMenu() {
 
     cv->selectFont(&fabgl::FONT_8x8);
     cv->setPenColor(C_BRIGHT_GREEN);
-    cv->drawText(bx + 4, by + bh - 16, "  ^v:Sel <>:Slot ENTER:OK");
+    cv->drawText(bx + 4, by + bh - 16, " ^v:Sel <>:Slot ENTER:OK");
     
     delete cv;
 }
@@ -1956,7 +1887,6 @@ void setup() {
         scanAllRoms();
         loadFavorites();
         loadRecent();
-        
 #if ENABLE_WIFI
         wifi_manager_init();
         if (wifi_manager_get_network_count() > 0) {
@@ -2053,10 +1983,9 @@ void loop() {
 
             if (loadROM(romFiles[realRomIndex])) {
                 addToRecent(romFiles[realRomIndex]);
-                auto cv2 = new fabgl::Canvas(&DisplayController);
-                cv2->setBrushColor(C_BLACK);
-                cv2->clear();
-                delete cv2;
+                for (int y = 0; y < 240; y++) {
+                    clearScanline(y);
+                }
                 appState = STATE_EMULATING;
             } else {
                 auto c = new fabgl::Canvas(&DisplayController);
@@ -2088,133 +2017,152 @@ void loop() {
     }
     
     case STATE_EMULATING: {
-    uint32_t rawBtns = readButtons();
-    uint32_t btns;
-    
-    if (currentEmu == EMU_LYNX && lynxRotated) {
-        btns = readButtonsRotated();
-    } else {
-        btns = rawBtns;
-    }
-    
-    bool shouldRender = !turboMode || (frameCounter % turboFrameSkip == 0);
-    
-    switch (currentEmu) {
-        case EMU_NES: {
-            nes_bridge_set_input(toNES(btns));
-            uint8_t *fb = nes_bridge_run_frame(shouldRender);
-            if (shouldRender) {
-                blitNES(fb);
-            }
-            int nSamples = 0;
-            int16_t *aBuf = nes_bridge_get_audio(&nSamples);
-            if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
-            break;
+        uint32_t rawBtns = readButtons();
+        uint32_t btns;
+        
+        if (currentEmu == EMU_LYNX && lynxRotated) {
+            btns = readButtonsRotated();
+        } else {
+            btns = rawBtns;
         }
-        case EMU_GB: {
-            gb_bridge_set_input(toGB(btns));
-            gb_bridge_run_frame(shouldRender);
-            if (shouldRender) {
-                blitGB(gb_bridge_get_framebuffer());
-            }
-            int nSamples = 0;
-            int16_t *aBuf = gb_bridge_get_audio(&nSamples);
-            if (aBuf && nSamples > 0) {
-                for (int i = 0; i < nSamples && ((audioWritePos+1)&AUDIO_RING_MASK)!=audioReadPos; i++) {
-                    audioRing[audioWritePos] = aBuf[i * 2];
-                    audioWritePos = (audioWritePos + 1) & AUDIO_RING_MASK;
+        
+        bool shouldRender = !turboMode || (frameCounter % turboFrameSkip == 0);
+        
+        switch (currentEmu) {
+           case EMU_NES: {
+                nes_bridge_set_input(toNES(btns));
+                uint8_t *fb = nes_bridge_run_frame(shouldRender);
+                if (shouldRender) {
+                    blitNES(fb);
                 }
+                int nSamples = 0;
+                int16_t *aBuf = nes_bridge_get_audio(&nSamples);
+                if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
+                break;
             }
-            break;
+            case EMU_GB: {
+                gb_bridge_set_input(toGB(btns));
+                gb_bridge_run_frame(shouldRender);
+                if (shouldRender) {
+                    blitGB(gb_bridge_get_framebuffer());
+                }
+                int nSamples = 0;
+                int16_t *aBuf = gb_bridge_get_audio(&nSamples);
+                if (aBuf && nSamples > 0) {
+                    for (int i = 0; i < nSamples && ((audioWritePos+1)&AUDIO_RING_MASK)!=audioReadPos; i++) {
+                        audioRing[audioWritePos] = aBuf[i * 2];
+                        audioWritePos = (audioWritePos + 1) & AUDIO_RING_MASK;
+                    }
+                }
+                break;
+            }
+            case EMU_SMS: case EMU_GG: case EMU_SG1000: case EMU_COLECO: {
+                sms_bridge_set_input(toSMS(btns));
+                sms_bridge_run_frame(shouldRender);
+                if (shouldRender) {
+                    int w, h;
+                    uint8_t *fb = sms_bridge_get_framebuffer(&w, &h);
+                    uint16_t *pal = sms_bridge_get_palette();
+                    blitSMS(fb, pal, w, h);
+                }
+                int16_t *aL, *aR; int nSamples;
+                sms_bridge_get_audio(&aL, &aR, &nSamples);
+                if (aL && aR && nSamples > 0) audioFeedStereoMixed(aL, aR, nSamples);
+                break;
+            }
+            case EMU_PCE: {
+                pce_bridge_set_input(toPCE(btns));
+                pce_bridge_run_frame();
+                if (shouldRender) {
+                    int w, h;
+                    uint8_t *fb = pce_bridge_get_framebuffer(&w, &h);
+                    uint16_t *pal = pce_bridge_get_palette();
+                    blitPCE(fb, pal, w, h);
+                }
+                int nSamples = 0;
+                int16_t *aBuf = pce_bridge_get_audio(&nSamples);
+                if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
+                break;
+            }
+            case EMU_SNES: {
+                snes_bridge_set_input(toSNES(btns));
+                snes_bridge_run_frame(shouldRender);
+                if (shouldRender) {
+                    int w, h;
+                    uint16_t *fb = snes_bridge_get_framebuffer(&w, &h);
+                    blitSNES(fb, w, h);
+                }
+                int nSamples = 0;
+                int16_t *aBuf = snes_bridge_get_audio(&nSamples);
+                if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
+                break;
+            }
+            case EMU_LYNX: {
+                uint32_t lynxBtns;
+                if (lynxRotated) {
+                    lynxBtns = toLynx(readButtonsRotated());
+                } else {
+                    lynxBtns = toLynx(readButtons());
+                }
+                lynx_bridge_set_input(lynxBtns);
+                lynx_bridge_run_frame(shouldRender);
+                if (shouldRender) {
+                    blitLynx(lynx_bridge_get_framebuffer());
+                }
+                int nSamples = 0;
+                int16_t *aBuf = lynx_bridge_get_audio(&nSamples);
+                if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
+                break;
+            }
+         case EMU_GENESIS: {
+        genesis_bridge_set_input(toGenesis(btns));
+        genesis_bridge_run_frame(shouldRender);
+        if (shouldRender) {
+            int w, h;
+            uint8_t *fb = genesis_bridge_get_framebuffer(&w, &h);
+            blitGenesis(fb, w, h);
         }
-        case EMU_SMS: case EMU_GG: case EMU_SG1000: case EMU_COLECO: {
-            sms_bridge_set_input(toSMS(btns));
-            sms_bridge_run_frame(shouldRender);
-            if (shouldRender) {
-                int w, h;
-                uint8_t *fb = sms_bridge_get_framebuffer(&w, &h);
-                uint16_t *pal = sms_bridge_get_palette();
-                blitSMS(fb, pal, w, h);
-            }
-            int16_t *aL, *aR; int nSamples;
-            sms_bridge_get_audio(&aL, &aR, &nSamples);
-            if (aL && aR && nSamples > 0) audioFeedStereoMixed(aL, aR, nSamples);
-            break;
-        }
-        case EMU_PCE: {
-            pce_bridge_set_input(toPCE(btns));
-            pce_bridge_run_frame();
-            if (shouldRender) {
-                int w, h;
-                uint8_t *fb = pce_bridge_get_framebuffer(&w, &h);
-                uint16_t *pal = pce_bridge_get_palette();
-                blitPCE(fb, pal, w, h);
-            }
-            int nSamples = 0;
-            int16_t *aBuf = pce_bridge_get_audio(&nSamples);
-            if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
-            break;
-        }
-        case EMU_SNES: {
-            snes_bridge_set_input(toSNES(btns));
-            snes_bridge_run_frame(shouldRender);
-            if (shouldRender) {
-                int w, h;
-                uint16_t *fb = snes_bridge_get_framebuffer(&w, &h);
-                blitSNES(fb, w, h);
-            }
-            int nSamples = 0;
-            int16_t *aBuf = snes_bridge_get_audio(&nSamples);
-            if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
-            break;
-        }
-        case EMU_LYNX: {
-            uint32_t lynxBtns;
-            if (lynxRotated) {
-                lynxBtns = toLynx(readButtonsRotated());
-            } else {
-                lynxBtns = toLynx(readButtons());
-            }
-            lynx_bridge_set_input(lynxBtns);
-            lynx_bridge_run_frame(shouldRender);
-            if (shouldRender) {
-                blitLynx(lynx_bridge_get_framebuffer());
-            }
-            int nSamples = 0;
-            int16_t *aBuf = lynx_bridge_get_audio(&nSamples);
-            if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
-            break;
-        }
-        case EMU_GENESIS: {
-            genesis_bridge_set_input(toGenesis(btns));
-            if (shouldRender) {
-                int w, h;
-                uint8_t *fb = genesis_bridge_get_framebuffer(&w, &h);
-                blitGenesis(fb, w, h);
-            }
-            int nSamples = 0;
-            int16_t *aBuf = genesis_bridge_get_audio(&nSamples);
-            if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
-            genesis_bridge_run_frame(shouldRender);
-            break;
-        }
-        default: break;
+        int nSamples = 0;
+        int16_t *aBuf = genesis_bridge_get_audio(&nSamples);
+        if (aBuf && nSamples > 0) audioFeedSamples(aBuf, nSamples);
+        
+        break;
     }
-    
-    frameCounter++;
-    
-    if (Kbd && Kbd->isVKDown(fabgl::VK_TAB)) {
-        turboMode = !turboMode;
-        delay(250);
+          
+            default: break;
+        }
+        
+        frameCounter++;
+
+        static unsigned long lastFrameMs = 0;
+        unsigned long nowMs = millis();
+        unsigned long elapsedMs = nowMs - lastFrameMs;
+        if (elapsedMs < 16) {
+            delay(16 - elapsedMs);
+        } else {
+            yield();
+        }
+        lastFrameMs = millis();
+
+        vPortYield();
+        taskYIELD();
+
+        if ((frameCounter & 31) == 0) {
+            DBG_INFO("HB", "frame=%d emu=%s", frameCounter, emuName(currentEmu));
+        }
+        
+        if (Kbd && Kbd->isVKDown(fabgl::VK_TAB)) {
+            turboMode = !turboMode;
+            delay(250);
+        }
+        if (Kbd && Kbd->isVKDown(fabgl::VK_ESCAPE)) {
+            delay(200);
+            igMenuSel = 0;
+            appState = STATE_INGAME_MENU;
+            drawInGameMenu();
+        }
+        break;
     }
-    if (Kbd && Kbd->isVKDown(fabgl::VK_ESCAPE)) {
-        delay(200);
-        igMenuSel = 0;
-        appState = STATE_INGAME_MENU;
-        drawInGameMenu();
-    }
-    break;
-}
     
     case STATE_INGAME_MENU: {
         static unsigned long lastMenuInput = 0;
